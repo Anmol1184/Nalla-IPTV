@@ -1,0 +1,47 @@
+name: Build and Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build tar.gz
+        run: npx electron-builder --linux tar.gz --publish never
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "dist/*.tar.gz"
+
+  update-aur:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Clone AUR repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone ssh://aur@aur.archlinux.org/nalla-iptv-bin.git aur-repo
+
+      - name: Update PKGBUILD
+        run: |
+          cd aur-repo
+          latest_version="${GITHUB_REF_NAME#v}"
+          sed -i "s/^pkgver=.*/pkgver=${latest_version}/" PKGBUILD
+          sed -i "s|source=.*|source=(\"\$pkgname-\$pkgver.tar.gz::https://github.com/Anmol1184/Nalla-IPTV/releases/download/v\$pkgver/nalla-iptv-\$pkgver.tar.gz\")|" PKGBUILD
+          git commit -am "Update to $latest_version"
+          git push
